@@ -327,7 +327,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
   function handleLetter(l){
     if(phase!=="type")return;
     if(l===current.word[typed.length]){
-      const nt=[...typed,l];setTyped(nt);speak(l,"letter");
+      const nt=[...typed,l];setTyped(nt);speak(l.toLowerCase(),"letter");
       if(nt.length===current.word.length){
         setPhase("counting");
         ["3","2","1","🎉"].forEach((v,i)=>setTimeout(()=>{setCountdown(v);playDrum(v==="🎉"?"boom":"tick");},i*500));
