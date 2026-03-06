@@ -329,9 +329,11 @@ function GamePlay({world,stage,onClear,onBack,name}){
     if(l===current.word[typed.length]){
       const nt=[...typed,l];setTyped(nt);speak(l.toLowerCase(),"letter");
       if(nt.length===current.word.length){
-        setPhase("counting");
-        ["3","2","1","🎉"].forEach((v,i)=>setTimeout(()=>{setCountdown(v);playDrum(v==="🎉"?"boom":"tick");},i*500));
-        setTimeout(()=>{setCountdown(null);setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);},2100);
+        setTimeout(()=>{
+          setPhase("counting");
+          ["3","2","1","🎉"].forEach((v,i)=>setTimeout(()=>{setCountdown(v);playDrum(v==="🎉"?"boom":"tick");},i*500));
+          setTimeout(()=>{setCountdown(null);setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);},2100);
+        },450);
       }
     } else {
       setMistakes(m=>m+1);setWrong(true);setShakeBtn(l);speak("Try again!","cheer");
