@@ -539,12 +539,24 @@ export default function App(){
   const [clearStars,setClearStars]=useState(0);
   const [progress,setProgress]=useState({});
 
+  function loadProgress(name){
+    try{const saved=localStorage.getItem("wg_progress_"+name);return saved?JSON.parse(saved):{};}
+    catch{return {};}
+  }
+  function saveProgress(name,prog){
+    try{localStorage.setItem("wg_progress_"+name,JSON.stringify(prog));}catch{}
+  }
+
   const world=selWorld?WORLDS.find(w=>w.id===selWorld):null;
   const stage=(world&&selStage)?world.stages.find(s=>s.stage===selStage):null;
   const bg=world?.bg||"linear-gradient(160deg,#EDE9FE 0%,#DDD6FE 100%)";
 
   function handleClear(stars){
-    setProgress(p=>({...p,[selWorld]:{...(p[selWorld]||{}),[selStage]:Math.max(stars,p[selWorld]?.[selStage]??0)}}));
+    setProgress(p=>{
+      const next={...p,[selWorld]:{...(p[selWorld]||{}),[selStage]:Math.max(stars,p[selWorld]?.[selStage]??0)}};
+      saveProgress(playerName,next);
+      return next;
+    });
     setClearStars(stars);setScreen("clear");
   }
   function nextStage(){
@@ -570,7 +582,7 @@ export default function App(){
         @keyframes popBig{0%{opacity:0;transform:scale(0.5)}70%{transform:scale(1.2)}100%{opacity:1;transform:scale(1)}}
         .emoji-float{animation:emojiFloat 2.4s ease-in-out infinite;display:inline-block;}
       `}</style>
-      {screen==="name"  &&<NameEntry onStart={n=>{setPlayerName(n);setScreen("world");}}/>}
+      {screen==="name"  &&<NameEntry onStart={n=>{setPlayerName(n);setProgress(loadProgress(n));setScreen("world");}}/>}
       {screen==="world" &&<WorldSelect progress={progress} onSelect={id=>{setSelWorld(id);setScreen("stage");}} name={playerName}/>}
       {screen==="stage" &&world&&<StageSelect world={world} progress={progress} onSelect={n=>{setSelStage(n);setScreen("play");}} onBack={()=>setScreen("world")}/>}
       {screen==="play"  &&world&&stage&&<GamePlay world={world} stage={stage} onClear={handleClear} onBack={()=>setScreen("stage")} name={playerName}/>}
