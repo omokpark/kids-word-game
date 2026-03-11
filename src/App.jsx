@@ -110,6 +110,18 @@ function eul(word) {
   return (code-0xAC00)%28===0?"를":"을";
 }
 
+const DONE_CHEERS=(name)=>[
+  `${name} 최고! 🌟`,`${name} 천재! 🧠`,`${name} 대박! 💥`,
+  `완벽해, ${name}! ✨`,`우와, ${name}! 🎉`,`${name} 짱이야! 👑`,
+  `굉장해, ${name}! 🔥`,`${name} 멋있어! 😎`,
+];
+const SENTENCE_CHEERS=[
+  "잘 찾았어요! 🎉","딩동댕! 💯","역시 대단해요! 🔥",
+  "눈이 정확해요! 👀","맞아요, 바로 그거예요! 🌟","완벽해요! ✨",
+  "빠르다 빠르! ⚡","탁월한 선택! 🏆",
+];
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
 // 정답 + 오답 3개 섞어서 반환
 function getChoices(correctLetter) {
   const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").filter(l=>l!==correctLetter);
@@ -354,6 +366,8 @@ function GamePlay({world,stage,onClear,onBack,name}){
   const [burst,setBurst]=useState(false);
   const [countdown,setCountdown]=useState(null);
   const [sentenceTapped,setSentenceTapped]=useState(false);
+  const [doneCheer,setDoneCheer]=useState("");
+  const [sentenceCheer,setSentenceCheer]=useState("");
   const shownRef=useRef(false);
   const current=words[wi];
   const {accent,cardBg,light}=world;
@@ -377,7 +391,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
       if(nt.length===current.word.length){
         setPhase("counting");
         ["3","2","1","🎉"].forEach((v,i)=>setTimeout(()=>{setCountdown(v);playDrum(v==="🎉"?"boom":"tick");},i*500));
-        setTimeout(()=>{setCountdown(null);setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);},2100);
+        setTimeout(()=>{setCountdown(null);setDoneCheer(pick(DONE_CHEERS(name)));setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);},2100);
       } else {
         setChoices(getChoices(current.word[nt.length]));
       }
@@ -520,7 +534,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
         {phase==="done"&&(
           <div style={{paddingBottom:4,animation:"popIn 0.4s ease-out"}}>
             <div style={{fontSize:"3.5rem",marginBottom:6,animation:"bounce 0.8s ease-in-out 3"}}>🎉</div>
-            <div style={{color:accent,fontSize:"1.8rem",fontWeight:900,marginBottom:4}}>{name} 최고! 🌟</div>
+            <div style={{color:accent,fontSize:"1.8rem",fontWeight:900,marginBottom:4}}>{doneCheer}</div>
             <div style={{display:"inline-block",background:accent+"18",borderRadius:999,padding:"6px 20px",fontSize:"1.05rem",fontWeight:700,color:accent,marginBottom:22}}>
               <strong>{current.word}</strong> 완성!
             </div>
@@ -540,14 +554,14 @@ function GamePlay({world,stage,onClear,onBack,name}){
           <div style={{animation:"popIn 0.4s ease-out"}}>
             <div style={{background:`linear-gradient(135deg,${accent}15,${accent}08)`,borderRadius:24,padding:"22px 18px",marginBottom:16,border:`2.5px solid ${accent}33`}}>
               <div style={{fontSize:"1.25rem",fontWeight:900,color:accent,marginBottom:12}}>
-                {sentenceTapped?"잘 찾았어요! 🎉":`👆 문장에서 ${current.hint.split(" ").pop()}${eul(current.hint.split(" ").pop())} 찾아 탭해봐요!`}
+                {sentenceTapped?sentenceCheer:`👆 문장에서 ${current.hint.split(" ").pop()}${eul(current.hint.split(" ").pop())} 찾아 탭해봐요!`}
               </div>
               <SentenceDisplay
                 sentence={current.sentence}
                 keyword={current.word}
                 accent={accent}
                 tappable={!sentenceTapped}
-                onTap={()=>{setSentenceTapped(true);speak(current.sentence,"sentence");}}
+                onTap={()=>{setSentenceTapped(true);setSentenceCheer(pick(SENTENCE_CHEERS));speak(current.sentence,"sentence");}}
               />
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
