@@ -525,7 +525,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
           <div style={{paddingBottom:4}}>
             <p style={{color:"#94A3B8",fontWeight:700,marginBottom:18,fontSize:"1.05rem"}}>🔊 잘 듣고 따라해 봐요!</p>
             <TapButton onClick={startTyping} bg={`linear-gradient(135deg,${accent}CC,${accent})`} shadow={`0 8px 24px ${accent}44`} style={{width:"100%",borderRadius:999,fontSize:"1.25rem",padding:"16px"}}>
-              타이핑 해볼게요! ✏️
+              글자를 쳐볼게요! ✏️
             </TapButton>
           </div>
         )}
