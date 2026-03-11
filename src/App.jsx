@@ -412,7 +412,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
     if(phase!=="type")return;
     const correct=current.word[typed.length];
     if(letter===correct){
-      const nt=[...typed,letter];setTyped(nt);speak(letter,"letter");
+      const nt=[...typed,letter];setTyped(nt);speak(letter.toLowerCase(),"letter");
       if(nt.length===current.word.length){
         const DELAY=1000;
         setTimeout(()=>{
@@ -710,6 +710,14 @@ export default function App(){
   const [progress,setProgress]=useState({});
   const [newlyUnlocked,setNewlyUnlocked]=useState(null);
 
+  function loadProgress(name){
+    try{const saved=localStorage.getItem("wg_progress_"+name);return saved?JSON.parse(saved):{};}
+    catch{return {};}
+  }
+  function saveProgress(name,prog){
+    try{localStorage.setItem("wg_progress_"+name,JSON.stringify(prog));}catch{}
+  }
+
   const world=selWorld?WORLDS.find(w=>w.id===selWorld):null;
   const stage=(world&&selStage)?world.stages.find(s=>s.stage===selStage):null;
   const bg=world?.bg||"linear-gradient(160deg,#EDE9FE 0%,#DDD6FE 100%)";
@@ -745,7 +753,11 @@ export default function App(){
   }
 
   function handleClear(stars){
-    setProgress(p=>({...p,[selWorld]:{...(p[selWorld]||{}),[selStage]:Math.max(stars,p[selWorld]?.[selStage]??0)}}));
+    setProgress(p=>{
+      const next={...p,[selWorld]:{...(p[selWorld]||{}),[selStage]:Math.max(stars,p[selWorld]?.[selStage]??0)}};
+      saveProgress(playerName,next);
+      return next;
+    });
     setClearStars(stars);setScreen("clear");
   }
 
