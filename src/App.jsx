@@ -1,8 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 
+// 1. AudioContext 싱글턴 — 매 호출마다 새로 생성하지 않고 재사용
+let _audioCtx=null;
+function getAudioCtx(){
+  if(!_audioCtx||_audioCtx.state==="closed")
+    _audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  return _audioCtx;
+}
+
 function playDrum(type="tick") {
   try {
-    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const ctx=getAudioCtx();
     if(type==="tick"){
       const buf=ctx.createBuffer(1,ctx.sampleRate*0.08,ctx.sampleRate);
       const d=buf.getChannelData(0);
@@ -103,11 +111,35 @@ const WORLDS=[
    ]},
 ];
 
-const QWERTY=[
-  ["Q","W","E","R","T","Y","U","I","O","P"],
-  ["A","S","D","F","G","H","J","K","L"],
-  ["Z","X","C","V","B","N","M"],
+// 한국어 조사 을/를 자동 선택
+function eul(word) {
+  const code=word.charCodeAt(word.length-1);
+  if(code<0xAC00||code>0xD7A3)return "를";
+  return (code-0xAC00)%28===0?"를":"을";
+}
+
+const DONE_CHEERS=(name)=>[
+  `${name} 최고! 🌟`,`${name} 해냈어요! 🎊`,`${name} 훌륭해요! 🌻`,
+  `완벽해, ${name}! ✨`,`우와, ${name}! 🎉`,`${name} 멋져! 👑`,
+  `굉장해, ${name}! 🔥`,`${name} 멋있어! 😎`,
 ];
+const SENTENCE_CHEERS=[
+  "잘 찾았어요! 🎉","딩동댕! 💯","역시 대단해요! 🔥",
+  "눈이 정확해요! 👀","맞아요, 바로 그거예요! 🌟","완벽해요! ✨",
+  "빨리 찾았어요! 🐇","바로 그거예요! ✅",
+];
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+// 정답 + 오답 3개 섞어서 반환
+function getChoices(correctLetter) {
+  const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").filter(l=>l!==correctLetter);
+  const wrong=[];
+  while(wrong.length<3){
+    const pick=alpha[Math.floor(Math.random()*alpha.length)];
+    if(!wrong.includes(pick))wrong.push(pick);
+  }
+  return [correctLetter,...wrong].sort(()=>Math.random()-0.5);
+}
 
 function speak(text,mode="word"){
   if(!("speechSynthesis" in window))return;
@@ -129,13 +161,26 @@ if("speechSynthesis" in window){
   window.speechSynthesis.onvoiceschanged=()=>window.speechSynthesis.getVoices();
 }
 
-function SentenceDisplay({sentence,keyword,accent}){
-  const parts=sentence.split(new RegExp(`(${keyword})`,"gi"));
+// 2. RegExp 특수문자 이스케이프 — keyword가 향후 외부 입력이 되어도 안전하게
+function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");}
+
+// 문장에서 키워드를 탭 가능하게 표시
+function SentenceDisplay({sentence,keyword,accent,tappable,onTap}){
+  const parts=sentence.split(new RegExp(`(${escapeRegExp(keyword)})`,"gi"));
   return(
-    <div style={{fontSize:"1.7rem",fontWeight:900,lineHeight:1.7,color:"#333",letterSpacing:1}}>
+    <div style={{fontSize:"1.7rem",fontWeight:900,lineHeight:1.9,color:"#333",letterSpacing:1}}>
       {parts.map((p,i)=>
         p.toUpperCase()===keyword.toUpperCase()
-          ?<span key={i} style={{color:accent,background:accent+"22",borderRadius:10,padding:"0 8px"}}>{p}</span>
+          ?<span key={i}
+              style={{
+                color:accent,background:accent+"22",borderRadius:10,padding:"2px 10px",
+                cursor:tappable?"pointer":"default",
+                display:"inline-block",
+                animation:tappable?"wordPulse 0.9s ease-in-out infinite":"none",
+                boxShadow:tappable?`0 0 14px ${accent}55`:"none",
+              }}
+              onPointerUp={tappable?(e=>{e.stopPropagation();onTap&&onTap();})  :undefined}
+            >{p}</span>
           :<span key={i}>{p}</span>
       )}
     </div>
@@ -177,7 +222,9 @@ function TapButton({onClick,children,style={},bg,color="#fff",shadow}){
 
 // -- 이름 입력 --
 function NameEntry({onStart}){
-  const [name,setName]=useState("");
+  const [name,setName]=useState(()=>{
+    try{return localStorage.getItem("kwg_lastPlayer")||"";}catch(e){return "";}
+  });
   return(
     <div style={{textAlign:"center",maxWidth:400,width:"100%",padding:"0 8px"}}>
       <div style={{fontSize:"5rem",animation:"bounce 1.5s ease-in-out infinite",display:"inline-block",marginBottom:8}}>
@@ -263,8 +310,13 @@ function WorldSelect({progress,onSelect,name}){
 }
 
 // -- 스테이지 선택 --
-function StageSelect({world,progress,onSelect,onBack}){
+function StageSelect({world,progress,onSelect,onBack,newlyUnlocked}){
   const wp=progress[world.id]||{};
+  const [glowing,setGlowing]=useState(newlyUnlocked);
+  useEffect(()=>{
+    if(newlyUnlocked){const t=setTimeout(()=>setGlowing(null),2500);return()=>clearTimeout(t);}
+  },[newlyUnlocked]);
+
   return(
     <div style={{width:"100%",maxWidth:520}}>
       <TapButton onClick={onBack} bg="rgba(255,255,255,0.7)" color="#3D2C8D" style={{marginBottom:22,borderRadius:999,padding:"10px 22px",fontSize:"1rem",border:"2px solid rgba(255,255,255,0.9)",boxShadow:"none"}}>
@@ -279,18 +331,31 @@ function StageSelect({world,progress,onSelect,onBack}){
         {world.stages.map((st,si)=>{
           const locked=si>0&&wp[si]===undefined;
           const stars=wp[st.stage];
+          const isNew=glowing===st.stage&&!locked;
           return(
             <button key={st.stage}
-              style={{background:locked?"rgba(255,255,255,0.5)":"white",border:`3px solid ${locked?"#e5e7eb":world.accent+"44"}`,borderRadius:24,padding:"18px 22px",cursor:locked?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:14,boxShadow:locked?"none":`0 6px 20px ${world.accent}28`,opacity:locked?0.6:1,WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}
+              style={{
+                background:locked?"rgba(255,255,255,0.5)":"white",
+                border:`3px solid ${isNew?world.accent:locked?"#e5e7eb":world.accent+"44"}`,
+                borderRadius:24,padding:"18px 22px",cursor:locked?"not-allowed":"pointer",
+                display:"flex",alignItems:"center",gap:14,
+                boxShadow:isNew?`0 0 0 4px ${world.accent}44, 0 8px 28px ${world.accent}44`:locked?"none":`0 6px 20px ${world.accent}28`,
+                opacity:locked?0.6:1,
+                WebkitTapHighlightColor:"transparent",touchAction:"manipulation",
+                animation:isNew?"unlockPulse 0.8s ease-in-out infinite":"none",
+              }}
               onPointerDown={e=>!locked&&(e.currentTarget.style.transform="scale(0.97)")}
               onPointerUp={e=>{e.currentTarget.style.transform="scale(1)";if(!locked)onSelect(st.stage);}}
               onPointerCancel={e=>e.currentTarget.style.transform="scale(1)"}
             >
-              <div style={{width:56,height:56,borderRadius:18,flexShrink:0,background:locked?"#f3f4f6":world.accent+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:locked?"1.8rem":"1.4rem",fontWeight:900,color:locked?"#ccc":world.accent}}>
-                {locked?"🔒":`${st.stage}단계`}
+              <div style={{width:56,height:56,borderRadius:18,flexShrink:0,background:locked?"#f3f4f6":isNew?world.accent+"33":world.accent+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:locked?"1.8rem":"1.4rem",fontWeight:900,color:locked?"#ccc":world.accent}}>
+                {locked?"🔒":isNew?"🔓":`${st.stage}단계`}
               </div>
               <div style={{flex:1,textAlign:"left"}}>
-                <div style={{fontWeight:900,fontSize:"1.15rem",color:locked?"#bbb":world.accent}}>{st.label}</div>
+                <div style={{fontWeight:900,fontSize:"1.15rem",color:locked?"#bbb":world.accent}}>
+                  {st.label}
+                  {isNew&&<span style={{marginLeft:8,fontSize:"0.85rem",background:world.accent,color:"white",borderRadius:999,padding:"2px 10px",fontWeight:700}}>NEW!</span>}
+                </div>
                 <div style={{color:"#94A3B8",fontSize:"0.9rem",marginTop:2,fontWeight:600}}>{st.words.length}개 단어</div>
               </div>
               {stars!==undefined&&<Stars n={stars} size="1.4rem"/>}
@@ -308,41 +373,71 @@ function GamePlay({world,stage,onClear,onBack,name}){
   const [wi,setWi]=useState(0);
   const [typed,setTyped]=useState([]);
   const [phase,setPhase]=useState("show");
-  const [wrong,setWrong]=useState(false);
-  const [shakeBtn,setShakeBtn]=useState(null);
+  const [choices,setChoices]=useState([]);
+  const [wrongChoice,setWrongChoice]=useState(null);
   const [mistakes,setMistakes]=useState(0);
   const [burst,setBurst]=useState(false);
   const [countdown,setCountdown]=useState(null);
+  const [sentenceTapped,setSentenceTapped]=useState(false);
+  const [doneCheer,setDoneCheer]=useState("");
+  const [sentenceCheer,setSentenceCheer]=useState("");
+  const [hlLetter,setHlLetter]=useState(-1);
+  const [doneReady,setDoneReady]=useState(false);
   const shownRef=useRef(false);
   const current=words[wi];
-  const prog=(typed.length/current.word.length)*100;
   const {accent,cardBg,light}=world;
 
   useEffect(()=>{
-    if(phase==="show"&&!shownRef.current){shownRef.current=true;speak(current.word,"word");}
+    if(phase==="show"&&!shownRef.current){
+      shownRef.current=true;
+      speak(current.word,"word");
+      // 글자 하나씩 순서대로 하이라이트
+      const PER=550;
+      current.word.split("").forEach((_,i)=>{
+        setTimeout(()=>setHlLetter(i),350+i*PER);
+      });
+      setTimeout(()=>setHlLetter(-1),350+current.word.length*PER);
+    }
   },[phase,current]);
 
-  function startTyping(){setPhase("type");setTyped([]);speak(current.word,"word");}
+  function startTyping(){
+    setHlLetter(-1);
+    setPhase("type");
+    setTyped([]);
+    setChoices(getChoices(current.word[0]));
+    speak(current.word,"word");
+  }
 
-  function handleLetter(l){
+  function handleChoice(letter){
     if(phase!=="type")return;
-    if(l===current.word[typed.length]){
-      const nt=[...typed,l];setTyped(nt);speak(l,"letter");
+    const correct=current.word[typed.length];
+    if(letter===correct){
+      const nt=[...typed,letter];setTyped(nt);speak(letter,"letter");
       if(nt.length===current.word.length){
-        setPhase("counting");
-        ["3","2","1","🎉"].forEach((v,i)=>setTimeout(()=>{setCountdown(v);playDrum(v==="🎉"?"boom":"tick");},i*500));
-        setTimeout(()=>{setCountdown(null);setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);},2100);
+        const DELAY=1000;
+        setTimeout(()=>{
+          setPhase("counting");
+          ["3","2","1","🎉"].forEach((v,i)=>setTimeout(()=>{setCountdown(v);playDrum(v==="🎉"?"boom":"tick");},i*500));
+          setTimeout(()=>{setCountdown(null);setDoneCheer(pick(DONE_CHEERS(name)));setDoneReady(false);setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);setTimeout(()=>setDoneReady(true),2500);},2100);
+        },DELAY);
+      } else {
+        setChoices(getChoices(current.word[nt.length]));
       }
     } else {
-      setMistakes(m=>m+1);setWrong(true);setShakeBtn(l);speak("Try again!","cheer");
-      setTimeout(()=>{setWrong(false);setShakeBtn(null);},500);
+      setMistakes(m=>m+1);setWrongChoice(letter);speak("Try again!","cheer");
+      setTimeout(()=>setWrongChoice(null),500);
     }
   }
 
   function goNext(){
+    setSentenceTapped(false);
+    setHlLetter(-1);
     if(wi+1<words.length){setWi(wi+1);setTyped([]);setPhase("show");shownRef.current=false;}
     else onClear(mistakes===0?3:mistakes<=3?2:1);
   }
+
+  // 단어 진행 인디케이터 (상단)
+  const wordProgress=words.map((_,i)=>i<wi?"done":i===wi?"current":"pending");
 
   return(
     <div style={{width:"100%",maxWidth:540,display:"flex",flexDirection:"column",gap:0}}>
@@ -356,8 +451,11 @@ function GamePlay({world,stage,onClear,onBack,name}){
         <div style={{flex:1,textAlign:"center",color:"#3D2C8D",fontWeight:900,fontSize:"1.1rem"}}>
           {world.emoji} {world.name} · {stage.stage}단계
         </div>
-        <div style={{background:"rgba(255,255,255,0.75)",borderRadius:999,padding:"8px 16px",color:"#3D2C8D",fontWeight:900,fontSize:"1rem",border:"2px solid rgba(255,255,255,0.9)"}}>
-          {wi+1}/{words.length}
+        {/* 단어 진행 점 */}
+        <div style={{display:"flex",gap:6,alignItems:"center",background:"rgba(255,255,255,0.75)",borderRadius:999,padding:"8px 14px",border:"2px solid rgba(255,255,255,0.9)"}}>
+          {wordProgress.map((s,i)=>(
+            <div key={i} style={{width:s==="current"?20:10,height:10,borderRadius:999,background:s==="done"?accent:s==="current"?accent:"#e5e7eb",opacity:s==="done"?0.5:1,transition:"all 0.3s"}}/>
+          ))}
         </div>
       </div>
 
@@ -381,42 +479,87 @@ function GamePlay({world,stage,onClear,onBack,name}){
         </div>
 
         {/* 힌트 태그 */}
-        <div style={{display:"inline-block",background:accent+"18",borderRadius:999,padding:"6px 18px",fontSize:"1rem",fontWeight:700,color:accent,marginBottom:20}}>
+        <div style={{display:"inline-block",background:accent+"18",borderRadius:999,padding:"8px 22px",fontSize:"1.3rem",fontWeight:700,color:accent,marginBottom:20}}>
           {current.hint}
         </div>
 
-        {/* 글자 박스 */}
-        {phase!=="sentence"&&(
+        {/* 글자 박스 (show / counting / done) */}
+        {(phase==="show"||phase==="counting"||phase==="done")&&(
           <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:16}}>
             {current.word.split("").map((ch,i)=>{
-              const done=phase==="show"||phase==="counting"||phase==="done"||i<typed.length;
-              const isNext=phase==="type"&&i===typed.length;
+              const isHl=phase==="show"&&hlLetter===i;
               return(
-                <div key={i} style={{width:60,height:68,border:`3px solid ${done?accent:isNext?accent+"88":"#e5e7eb"}`,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2.4rem",fontWeight:900,color:accent,background:done?accent+"18":isNext?accent+"0A":"white",boxShadow:done?`0 4px 12px ${accent}28`:"none",transition:"all 0.25s"}}>
-                  {done?ch:""}
+                <div key={i} style={{
+                  width:isHl?70:60,height:isHl?78:68,
+                  border:`3px solid ${accent}`,borderRadius:18,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:isHl?"2.9rem":"2.4rem",fontWeight:900,
+                  color:isHl?"white":accent,
+                  background:isHl?accent:accent+"18",
+                  boxShadow:isHl?`0 6px 20px ${accent}66`:`0 4px 12px ${accent}28`,
+                  transition:"all 0.2s",
+                  animation:isHl?"popBig 0.2s ease-out":"none",
+                }}>
+                  {ch}
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* 스펠 힌트 + 진행바 */}
+        {/* TYPE 단계 — 빈칸 + 선택지 */}
         {phase==="type"&&(
-          <>
-            <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:14}}>
+          <div>
+            {/* 글자 박스: 완료=초록, 현재=빈칸(accent), 미입력=회색 */}
+            <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:20}}>
               {current.word.split("").map((ch,i)=>{
-                const done=i<typed.length;const isNext=i===typed.length;
+                const done=i<typed.length;
+                const isCurrent=i===typed.length;
                 return(
-                  <div key={i} style={{width:42,height:42,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.3rem",fontWeight:900,background:done?"#d1fae5":isNext?accent+"22":light,color:done?"#059669":isNext?accent:"#bbb",border:`2.5px solid ${done?"#6ee7b7":isNext?accent:"#e5e7eb"}`,transition:"all 0.25s",boxShadow:isNext?`0 3px 10px ${accent}33`:"none"}}>
-                    {ch}
+                  <div key={i} style={{
+                    width:60,height:68,
+                    border:`3px solid ${done?"#6ee7b7":isCurrent?accent:"#e5e7eb"}`,
+                    borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:"2.4rem",fontWeight:900,
+                    color:done?"#059669":accent,
+                    background:done?"#d1fae5":isCurrent?accent+"18":"white",
+                    boxShadow:done?"0 4px 12px #6ee7b744":isCurrent?`0 4px 16px ${accent}55`:"none",
+                    transition:"all 0.25s",
+                  }}>
+                    {done?ch:isCurrent?"?":""}
                   </div>
                 );
               })}
             </div>
-            <div style={{background:"#f3f4f6",borderRadius:999,height:10,marginBottom:16,overflow:"hidden",border:`2px solid ${accent}22`}}>
-              <div style={{width:`${prog}%`,height:"100%",background:`linear-gradient(90deg,${accent}88,${accent})`,borderRadius:999,transition:"width 0.3s"}}/>
+
+            <p style={{color:"#94A3B8",fontWeight:700,fontSize:"1rem",marginBottom:16}}>
+              어떤 글자일까요? 👆
+            </p>
+
+            {/* 4개 선택지 버튼 (2×2) */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,maxWidth:280,margin:"0 auto 16px"}}>
+              {choices.map(letter=>(
+                <button key={letter}
+                  style={{
+                    height:72,border:`3px solid ${letter===wrongChoice?"#fca5a5":"#e5e7eb"}`,
+                    borderRadius:20,fontSize:"2rem",fontWeight:900,cursor:"pointer",
+                    background:letter===wrongChoice?"#fee2e2":"white",
+                    color:letter===wrongChoice?"#ef4444":"#444",
+                    animation:letter===wrongChoice?"shake 0.3s":"none",
+                    boxShadow:letter===wrongChoice?"none":"0 4px 12px rgba(0,0,0,0.07)",
+                    WebkitTapHighlightColor:"transparent",touchAction:"manipulation",
+                    transition:"background 0.15s, border-color 0.15s",
+                  }}
+                  onPointerDown={e=>e.currentTarget.style.transform="scale(0.88)"}
+                  onPointerUp={e=>{e.currentTarget.style.transform="scale(1)";handleChoice(letter);}}
+                  onPointerCancel={e=>e.currentTarget.style.transform="scale(1)"}
+                >{letter}</button>
+              ))}
             </div>
-          </>
+
+            <button style={{background:"none",border:`2.5px solid ${accent}`,borderRadius:999,padding:"10px 24px",color:accent,fontSize:"1rem",cursor:"pointer",fontWeight:800,WebkitTapHighlightColor:"transparent"}}
+              onPointerUp={()=>speak(current.word,"word")}>🔊 다시 듣기</button>
+          </div>
         )}
 
         {/* SHOW */}
@@ -424,35 +567,8 @@ function GamePlay({world,stage,onClear,onBack,name}){
           <div style={{paddingBottom:4}}>
             <p style={{color:"#94A3B8",fontWeight:700,marginBottom:18,fontSize:"1.05rem"}}>🔊 잘 듣고 따라해 봐요!</p>
             <TapButton onClick={startTyping} bg={`linear-gradient(135deg,${accent}CC,${accent})`} shadow={`0 8px 24px ${accent}44`} style={{width:"100%",borderRadius:999,fontSize:"1.25rem",padding:"16px"}}>
-              타이핑 해볼게요! ✏️
+              글자를 쳐볼게요! ✏️
             </TapButton>
-          </div>
-        )}
-
-        {/* TYPE */}
-        {phase==="type"&&(
-          <div>
-            <p style={{color:"#94A3B8",fontWeight:700,fontSize:"1rem",marginBottom:12}}>📝 순서대로 눌러보세요!</p>
-            <div style={{display:"flex",flexDirection:"column",gap:7,alignItems:"center",width:"100%"}}>
-              {QWERTY.map((row,ri)=>(
-                <div key={ri} style={{display:"flex",gap:5,justifyContent:"center",width:"100%"}}>
-                  {row.map(l=>{
-                    const isNext=l===current.word[typed.length];
-                    const isShake=shakeBtn===l;
-                    return(
-                      <button key={l}
-                        style={{width:44,height:48,border:`2.5px solid ${isNext?accent:wrong&&isShake?"#fca5a5":"#e5e7eb"}`,borderRadius:14,fontSize:"1.1rem",fontWeight:900,cursor:"pointer",background:isNext?accent+"18":wrong&&isShake?"#fee2e2":"white",color:isNext?accent:"#555",animation:isShake?"shake 0.3s":"none",boxShadow:isNext?`0 4px 12px ${accent}44`:"0 2px 4px rgba(0,0,0,0.05)",WebkitTapHighlightColor:"transparent",touchAction:"manipulation",transition:"background 0.15s"}}
-                        onPointerDown={e=>e.currentTarget.style.transform="scale(0.88)"}
-                        onPointerUp={e=>{e.currentTarget.style.transform="scale(1)";handleLetter(l);}}
-                        onPointerCancel={e=>e.currentTarget.style.transform="scale(1)"}
-                      >{l}</button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-            <button style={{marginTop:14,background:"none",border:`2.5px solid ${accent}`,borderRadius:999,padding:"10px 24px",color:accent,fontSize:"1rem",cursor:"pointer",fontWeight:800,WebkitTapHighlightColor:"transparent"}}
-              onPointerUp={()=>speak(current.word,"word")}>🔊 다시 듣기</button>
           </div>
         )}
 
@@ -460,35 +576,47 @@ function GamePlay({world,stage,onClear,onBack,name}){
         {phase==="done"&&(
           <div style={{paddingBottom:4,animation:"popIn 0.4s ease-out"}}>
             <div style={{fontSize:"3.5rem",marginBottom:6,animation:"bounce 0.8s ease-in-out 3"}}>🎉</div>
-            <div style={{color:accent,fontSize:"1.8rem",fontWeight:900,marginBottom:4}}>{name} 최고! 🌟</div>
+            <div style={{color:accent,fontSize:"1.8rem",fontWeight:900,marginBottom:4}}>{doneCheer}</div>
             <div style={{display:"inline-block",background:accent+"18",borderRadius:999,padding:"6px 20px",fontSize:"1.05rem",fontWeight:700,color:accent,marginBottom:22}}>
               <strong>{current.word}</strong> 완성!
             </div>
-            <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
+            {doneReady&&(
+            <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap",animation:"popIn 0.4s ease-out"}}>
               <TapButton bg="white" color={accent} style={{borderRadius:999,padding:"13px 22px",fontSize:"1rem",border:`2.5px solid ${accent}`,boxShadow:`0 4px 14px ${accent}28`}} onClick={()=>speak(current.word,"word")}>
                 🔊 다시 듣기
               </TapButton>
-              <TapButton bg={`linear-gradient(135deg,${accent}CC,${accent})`} shadow={`0 6px 20px ${accent}44`} style={{borderRadius:999,padding:"13px 26px",fontSize:"1.05rem"}} onClick={()=>{setPhase("sentence");speak(current.sentence,"sentence");}}>
+              <TapButton bg={`linear-gradient(135deg,${accent}CC,${accent})`} shadow={`0 6px 20px ${accent}44`} style={{borderRadius:999,padding:"13px 26px",fontSize:"1.05rem"}} onClick={()=>{setSentenceTapped(false);setPhase("sentence");speak(current.sentence,"sentence");}}>
                 ✨ 문장 보기
               </TapButton>
             </div>
+            )}
           </div>
         )}
 
-        {/* SENTENCE */}
+        {/* SENTENCE — 키워드를 직접 탭해야 다음으로 진행 */}
         {phase==="sentence"&&(
           <div style={{animation:"popIn 0.4s ease-out"}}>
-            <div style={{background:`linear-gradient(135deg,${accent}15,${accent}08)`,borderRadius:24,padding:"22px 18px",marginBottom:20,border:`2.5px solid ${accent}33`}}>
-              <div style={{fontSize:"1rem",fontWeight:700,color:"#94A3B8",marginBottom:10}}>✨ 문장으로 만나요!</div>
-              <SentenceDisplay sentence={current.sentence} keyword={current.word} accent={accent}/>
+            <div style={{background:`linear-gradient(135deg,${accent}15,${accent}08)`,borderRadius:24,padding:"22px 18px",marginBottom:16,border:`2.5px solid ${accent}33`}}>
+              <div style={{fontSize:"1.25rem",fontWeight:900,color:accent,marginBottom:12}}>
+                {sentenceTapped?sentenceCheer:`👆 문장에서 ${current.hint.split(" ").pop()}${eul(current.hint.split(" ").pop())} 찾아 눌러봐요!`}
+              </div>
+              <SentenceDisplay
+                sentence={current.sentence}
+                keyword={current.word}
+                accent={accent}
+                tappable={!sentenceTapped}
+                onTap={()=>{setSentenceTapped(true);setSentenceCheer(pick(SENTENCE_CHEERS));speak(current.sentence,"sentence");}}
+              />
             </div>
             <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
               <TapButton bg="white" color={accent} style={{borderRadius:999,padding:"13px 22px",fontSize:"1rem",border:`2.5px solid ${accent}`,boxShadow:`0 4px 14px ${accent}28`}} onClick={()=>speak(current.sentence,"sentence")}>
                 🔊 다시 듣기
               </TapButton>
-              <TapButton bg={`linear-gradient(135deg,${accent}CC,${accent})`} shadow={`0 6px 20px ${accent}44`} style={{borderRadius:999,padding:"13px 26px",fontSize:"1.05rem"}} onClick={goNext}>
-                {wi+1<words.length?"다음 단어 →":"스테이지 완료! 🏆"}
-              </TapButton>
+              {sentenceTapped&&(
+                <TapButton bg={`linear-gradient(135deg,${accent}CC,${accent})`} shadow={`0 6px 20px ${accent}44`} style={{borderRadius:999,padding:"13px 26px",fontSize:"1.05rem"}} onClick={goNext}>
+                  {wi+1<words.length?"다음 단어 →":"스테이지 완료! 🏆"}
+                </TapButton>
+              )}
             </div>
           </div>
         )}
@@ -498,29 +626,73 @@ function GamePlay({world,stage,onClear,onBack,name}){
 }
 
 // -- 스테이지 클리어 --
-function StageClear({world,stage,stars,name,onNext,onWorldMap}){
+function StageClear({world,stage,stars,name,onStageList,onWorldMap}){
   const {accent}=world;
+  const [burst,setBurst]=useState(true);
+  const isWorldClear=stage.stage===3;
+
+  useEffect(()=>{
+    // 입장 즉시 팡파레
+    playDrum("boom");
+    setTimeout(()=>playDrum("tick"),300);
+    setTimeout(()=>playDrum("boom"),600);
+    const t=setTimeout(()=>setBurst(false),2200);
+    return()=>clearTimeout(t);
+  },[]);
+
   return(
-    <div style={{textAlign:"center",maxWidth:420,width:"100%",padding:"0 8px"}}>
-      <div style={{fontSize:"6rem",animation:"bounce 1s ease-in-out infinite",display:"inline-block",marginBottom:8}}>🏆</div>
-      <div style={{fontSize:"2.4rem",fontWeight:900,color:"#3D2C8D",marginBottom:6}}>Stage Clear!</div>
-      <div style={{color:"#64748B",fontSize:"1.1rem",fontWeight:700,marginBottom:24}}>
+    <div style={{textAlign:"center",maxWidth:440,width:"100%",padding:"0 8px"}}>
+      {burst&&<FloatingStars/>}
+      <div style={{fontSize:"6rem",animation:"bounce 1s ease-in-out infinite",display:"inline-block",marginBottom:4}}>
+        {isWorldClear?"🏅":"🏆"}
+      </div>
+      <div style={{fontSize:"2.4rem",fontWeight:900,color:"#3D2C8D",marginBottom:4}}>
+        {isWorldClear?"World Clear! 🌍":"Stage Clear!"}
+      </div>
+      <div style={{color:"#64748B",fontSize:"1.05rem",fontWeight:700,marginBottom:20}}>
         {world.name} · {stage.stage}단계 — {stage.label}
       </div>
-      <div style={{background:"rgba(255,255,255,0.75)",borderRadius:28,padding:"26px",marginBottom:26,border:"2px solid rgba(255,255,255,0.9)"}}>
-        <div style={{fontSize:"1rem",fontWeight:700,marginBottom:12,color:"#64748B"}}>획득 별</div>
+
+      {/* 별 */}
+      <div style={{background:"rgba(255,255,255,0.75)",borderRadius:28,padding:"20px",marginBottom:18,border:"2px solid rgba(255,255,255,0.9)"}}>
+        <div style={{fontSize:"0.95rem",fontWeight:700,marginBottom:10,color:"#64748B"}}>획득 별</div>
         <Stars n={stars} size="2.6rem"/>
-        <div style={{marginTop:14,fontSize:"1.2rem",fontWeight:900,color:"#3D2C8D"}}>
+        <div style={{marginTop:12,fontSize:"1.15rem",fontWeight:900,color:"#3D2C8D"}}>
           {stars===3?`${name}, 완벽해요! 실수 없음 🌟`:stars===2?`${name}, 훌륭해요! 조금만 더!`:`${name}, 잘했어요! 다시 도전해봐요!`}
         </div>
       </div>
-      <div style={{display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
-        <TapButton onClick={onWorldMap} bg="rgba(255,255,255,0.75)" color="#3D2C8D" style={{borderRadius:999,padding:"14px 26px",fontSize:"1rem",border:"2px solid rgba(255,255,255,0.9)",boxShadow:"none"}}>
+
+      {/* 배운 단어 복습 카드 */}
+      <div style={{marginBottom:22}}>
+        <div style={{fontSize:"0.95rem",fontWeight:700,color:"#64748B",marginBottom:10}}>오늘 배운 단어 📚</div>
+        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+          {stage.words.map(w=>(
+            <div key={w.word}
+              style={{flex:1,background:"white",borderRadius:20,padding:"14px 8px",boxShadow:`0 4px 16px ${accent}22`,border:`2px solid ${accent}22`,cursor:"pointer",WebkitTapHighlightColor:"transparent"}}
+              onPointerUp={()=>speak(w.word,"word")}
+            >
+              <div style={{fontSize:"2.4rem",marginBottom:4}}>{w.emoji}</div>
+              <div style={{fontWeight:900,color:accent,fontSize:"1.05rem"}}>{w.word}</div>
+              <div style={{fontSize:"0.75rem",color:"#94A3B8",fontWeight:600,marginTop:2}}>{w.hint}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:"0.8rem",color:"#94A3B8",fontWeight:600,marginTop:8}}>탭하면 발음을 들을 수 있어요 🔊</div>
+      </div>
+
+      {/* 버튼 */}
+      <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+        <TapButton onClick={onWorldMap} bg="rgba(255,255,255,0.75)" color="#3D2C8D" style={{borderRadius:999,padding:"14px 22px",fontSize:"1rem",border:"2px solid rgba(255,255,255,0.9)",boxShadow:"none"}}>
           🗺️ 월드 맵
         </TapButton>
-        {onNext&&(
-          <TapButton onClick={onNext} bg={`linear-gradient(135deg,${accent}CC,${accent})`} color="white" style={{borderRadius:999,padding:"14px 26px",fontSize:"1rem",fontWeight:900,boxShadow:`0 6px 20px ${accent}44`}}>
-            다음 스테이지 →
+        {!isWorldClear&&(
+          <TapButton onClick={onStageList} bg={`linear-gradient(135deg,${accent}CC,${accent})`} color="white" style={{borderRadius:999,padding:"14px 26px",fontSize:"1rem",fontWeight:900,boxShadow:`0 6px 20px ${accent}44`}}>
+            스테이지 목록 →
+          </TapButton>
+        )}
+        {isWorldClear&&(
+          <TapButton onClick={onWorldMap} bg={`linear-gradient(135deg,${accent}CC,${accent})`} color="white" style={{borderRadius:999,padding:"14px 26px",fontSize:"1rem",fontWeight:900,boxShadow:`0 6px 20px ${accent}44`}}>
+            다음 월드 보기 🌍
           </TapButton>
         )}
       </div>
@@ -536,25 +708,53 @@ export default function App(){
   const [selStage,setSelStage]=useState(null);
   const [clearStars,setClearStars]=useState(0);
   const [progress,setProgress]=useState({});
+  const [newlyUnlocked,setNewlyUnlocked]=useState(null);
 
   const world=selWorld?WORLDS.find(w=>w.id===selWorld):null;
   const stage=(world&&selStage)?world.stages.find(s=>s.stage===selStage):null;
   const bg=world?.bg||"linear-gradient(160deg,#EDE9FE 0%,#DDD6FE 100%)";
 
+  // progress 변경 시 localStorage에 저장 (encodeURIComponent 키 통일)
+  useEffect(()=>{
+    if(!playerName)return;
+    try{localStorage.setItem(`kwg_${encodeURIComponent(playerName)}`,JSON.stringify(progress));}catch(e){}
+  },[progress,playerName]);
+
+  // 3. localStorage 데이터 구조 검증 — 파싱 후 형식이 맞는지 확인
+  function isValidProgress(data){
+    if(typeof data!=="object"||data===null||Array.isArray(data))return false;
+    return Object.entries(data).every(([k,v])=>
+      /^\d+$/.test(k)&&typeof v==="object"&&v!==null&&!Array.isArray(v)&&
+      Object.entries(v).every(([sk,sv])=>/^\d+$/.test(sk)&&[0,1,2,3].includes(sv))
+    );
+  }
+
+  function handleStart(name){
+    setPlayerName(name);
+    // 4. encodeURIComponent — 이름에 특수문자가 있어도 키가 안전하게 생성됨
+    const key=`kwg_${encodeURIComponent(name)}`;
+    try{
+      localStorage.setItem("kwg_lastPlayer",name);
+      const saved=localStorage.getItem(key);
+      if(saved){
+        const parsed=JSON.parse(saved);
+        setProgress(isValidProgress(parsed)?parsed:{});
+      } else setProgress({});
+    }catch(e){setProgress({});}
+    setScreen("world");
+  }
+
   function handleClear(stars){
     setProgress(p=>({...p,[selWorld]:{...(p[selWorld]||{}),[selStage]:Math.max(stars,p[selWorld]?.[selStage]??0)}}));
     setClearStars(stars);setScreen("clear");
   }
-  function nextStage(){
-    const n=selStage+1;
-    if(n<=3){setSelStage(n);setScreen("play");}
-    else{
-      const ni=WORLDS.findIndex(w=>w.id===selWorld)+1;
-      if(ni<WORLDS.length){setSelWorld(WORLDS[ni].id);setSelStage(1);setScreen("play");}
-      else setScreen("world");
-    }
+
+  // 클리어 후 스테이지 목록으로 (잠금 해제 연출 포함)
+  function goToStageList(){
+    const next=selStage+1;
+    setNewlyUnlocked(next<=3?next:null);
+    setScreen("stage");
   }
-  const hasNext=selStage<3||WORLDS.findIndex(w=>w.id===selWorld)<WORLDS.length-1;
 
   return(
     <div style={{minHeight:"100svh",background:bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"-apple-system,'Segoe UI',sans-serif",padding:"20px 16px",transition:"background 0.8s ease",boxSizing:"border-box"}}>
@@ -566,13 +766,15 @@ export default function App(){
         @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
         @keyframes popIn{0%{opacity:0;transform:scale(0.7)}70%{transform:scale(1.1)}100%{opacity:1;transform:scale(1)}}
         @keyframes popBig{0%{opacity:0;transform:scale(0.5)}70%{transform:scale(1.2)}100%{opacity:1;transform:scale(1)}}
+        @keyframes wordPulse{0%,100%{transform:scale(1);box-shadow:none}50%{transform:scale(1.08);}}
+        @keyframes unlockPulse{0%,100%{box-shadow:0 0 0 4px rgba(0,0,0,0.08)}50%{box-shadow:0 0 0 6px rgba(0,0,0,0.18)}}
         .emoji-float{animation:emojiFloat 2.4s ease-in-out infinite;display:inline-block;}
       `}</style>
-      {screen==="name"  &&<NameEntry onStart={n=>{setPlayerName(n);setScreen("world");}}/>}
-      {screen==="world" &&<WorldSelect progress={progress} onSelect={id=>{setSelWorld(id);setScreen("stage");}} name={playerName}/>}
-      {screen==="stage" &&world&&<StageSelect world={world} progress={progress} onSelect={n=>{setSelStage(n);setScreen("play");}} onBack={()=>setScreen("world")}/>}
+      {screen==="name"  &&<NameEntry onStart={handleStart}/>}
+      {screen==="world" &&<WorldSelect progress={progress} onSelect={id=>{setSelWorld(id);setNewlyUnlocked(null);setScreen("stage");}} name={playerName}/>}
+      {screen==="stage" &&world&&<StageSelect world={world} progress={progress} onSelect={n=>{setSelStage(n);setNewlyUnlocked(null);setScreen("play");}} onBack={()=>setScreen("world")} newlyUnlocked={newlyUnlocked}/>}
       {screen==="play"  &&world&&stage&&<GamePlay world={world} stage={stage} onClear={handleClear} onBack={()=>setScreen("stage")} name={playerName}/>}
-      {screen==="clear" &&world&&stage&&<StageClear world={world} stage={stage} stars={clearStars} name={playerName} onNext={hasNext?nextStage:null} onWorldMap={()=>setScreen("world")}/>}
+      {screen==="clear" &&world&&stage&&<StageClear world={world} stage={stage} stars={clearStars} name={playerName} onStageList={goToStageList} onWorldMap={()=>{setNewlyUnlocked(null);setScreen("world");}}/>}
     </div>
   );
 }
