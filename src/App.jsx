@@ -368,15 +368,26 @@ function GamePlay({world,stage,onClear,onBack,name}){
   const [sentenceTapped,setSentenceTapped]=useState(false);
   const [doneCheer,setDoneCheer]=useState("");
   const [sentenceCheer,setSentenceCheer]=useState("");
+  const [hlLetter,setHlLetter]=useState(-1);
   const shownRef=useRef(false);
   const current=words[wi];
   const {accent,cardBg,light}=world;
 
   useEffect(()=>{
-    if(phase==="show"&&!shownRef.current){shownRef.current=true;speak(current.word,"word");}
+    if(phase==="show"&&!shownRef.current){
+      shownRef.current=true;
+      speak(current.word,"word");
+      // 글자 하나씩 순서대로 하이라이트
+      const PER=550;
+      current.word.split("").forEach((_,i)=>{
+        setTimeout(()=>setHlLetter(i),350+i*PER);
+      });
+      setTimeout(()=>setHlLetter(-1),350+current.word.length*PER);
+    }
   },[phase,current]);
 
   function startTyping(){
+    setHlLetter(-1);
     setPhase("type");
     setTyped([]);
     setChoices(getChoices(current.word[0]));
@@ -403,6 +414,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
 
   function goNext(){
     setSentenceTapped(false);
+    setHlLetter(-1);
     if(wi+1<words.length){setWi(wi+1);setTyped([]);setPhase("show");shownRef.current=false;}
     else onClear(mistakes===0?3:mistakes<=3?2:1);
   }
@@ -457,11 +469,24 @@ function GamePlay({world,stage,onClear,onBack,name}){
         {/* 글자 박스 (show / counting / done) */}
         {(phase==="show"||phase==="counting"||phase==="done")&&(
           <div style={{display:"flex",justifyContent:"center",gap:10,marginBottom:16}}>
-            {current.word.split("").map((ch,i)=>(
-              <div key={i} style={{width:60,height:68,border:`3px solid ${accent}`,borderRadius:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2.4rem",fontWeight:900,color:accent,background:accent+"18",boxShadow:`0 4px 12px ${accent}28`,transition:"all 0.25s"}}>
-                {ch}
-              </div>
-            ))}
+            {current.word.split("").map((ch,i)=>{
+              const isHl=phase==="show"&&hlLetter===i;
+              return(
+                <div key={i} style={{
+                  width:isHl?70:60,height:isHl?78:68,
+                  border:`3px solid ${accent}`,borderRadius:18,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:isHl?"2.9rem":"2.4rem",fontWeight:900,
+                  color:isHl?"white":accent,
+                  background:isHl?accent:accent+"18",
+                  boxShadow:isHl?`0 6px 20px ${accent}66`:`0 4px 12px ${accent}28`,
+                  transition:"all 0.2s",
+                  animation:isHl?"popBig 0.2s ease-out":"none",
+                }}>
+                  {ch}
+                </div>
+              );
+            })}
           </div>
         )}
 
