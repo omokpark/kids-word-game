@@ -31,7 +31,9 @@
 ## 보안 원칙
 - 사용자 이름 입력: 최대 20자, trim() 처리 필수
 - localStorage 키는 encodeURIComponent 사용 (현재 준수)
-- JSON.parse 후 반드시 유효성 검증 (현재 준수)
+- JSON.parse 후 반드시 isValidProgress()로 구조 검증 (현재 준수)
+- 외부 입력을 RegExp에 쓸 때 escapeRegExp() 처리 필수 (현재 준수)
+- AudioContext는 싱글턴(getAudioCtx) 재사용 — 매 호출마다 new 금지 (현재 준수)
 - 외부 CDN/API 추가 금지 (아동 앱 특성상, 단 단어/이미지/발음 API는 예외 가능)
 - eval(), innerHTML 직접 사용 금지
 
