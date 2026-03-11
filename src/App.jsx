@@ -554,7 +554,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
           <div style={{animation:"popIn 0.4s ease-out"}}>
             <div style={{background:`linear-gradient(135deg,${accent}15,${accent}08)`,borderRadius:24,padding:"22px 18px",marginBottom:16,border:`2.5px solid ${accent}33`}}>
               <div style={{fontSize:"1.25rem",fontWeight:900,color:accent,marginBottom:12}}>
-                {sentenceTapped?sentenceCheer:`👆 문장에서 ${current.hint.split(" ").pop()}${eul(current.hint.split(" ").pop())} 찾아 탭해봐요!`}
+                {sentenceTapped?sentenceCheer:`👆 문장에서 ${current.hint.split(" ").pop()}${eul(current.hint.split(" ").pop())} 찾아 눌러봐요!`}
               </div>
               <SentenceDisplay
                 sentence={current.sentence}
