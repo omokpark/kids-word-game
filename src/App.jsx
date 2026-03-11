@@ -112,7 +112,7 @@ function eul(word) {
 
 const DONE_CHEERS=(name)=>[
   `${name} 최고! 🌟`,`${name} 천재! 🧠`,`${name} 대박! 💥`,
-  `완벽해, ${name}! ✨`,`우와, ${name}! 🎉`,`${name} 짱이야! 👑`,
+  `완벽해, ${name}! ✨`,`우와, ${name}! 🎉`,`${name} 멋져! 👑`,
   `굉장해, ${name}! 🔥`,`${name} 멋있어! 😎`,
 ];
 const SENTENCE_CHEERS=[
