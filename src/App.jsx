@@ -382,6 +382,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
   const [doneCheer,setDoneCheer]=useState("");
   const [sentenceCheer,setSentenceCheer]=useState("");
   const [hlLetter,setHlLetter]=useState(-1);
+  const [doneReady,setDoneReady]=useState(false);
   const shownRef=useRef(false);
   const current=words[wi];
   const {accent,cardBg,light}=world;
@@ -415,7 +416,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
       if(nt.length===current.word.length){
         setPhase("counting");
         ["3","2","1","🎉"].forEach((v,i)=>setTimeout(()=>{setCountdown(v);playDrum(v==="🎉"?"boom":"tick");},i*500));
-        setTimeout(()=>{setCountdown(null);setDoneCheer(pick(DONE_CHEERS(name)));setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);},2100);
+        setTimeout(()=>{setCountdown(null);setDoneCheer(pick(DONE_CHEERS(name)));setDoneReady(false);setPhase("done");setBurst(true);speak(current.word,"word");setTimeout(()=>setBurst(false),1800);setTimeout(()=>setDoneReady(true),2500);},2100);
       } else {
         setChoices(getChoices(current.word[nt.length]));
       }
@@ -576,7 +577,8 @@ function GamePlay({world,stage,onClear,onBack,name}){
             <div style={{display:"inline-block",background:accent+"18",borderRadius:999,padding:"6px 20px",fontSize:"1.05rem",fontWeight:700,color:accent,marginBottom:22}}>
               <strong>{current.word}</strong> 완성!
             </div>
-            <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
+            {doneReady&&(
+            <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap",animation:"popIn 0.4s ease-out"}}>
               <TapButton bg="white" color={accent} style={{borderRadius:999,padding:"13px 22px",fontSize:"1rem",border:`2.5px solid ${accent}`,boxShadow:`0 4px 14px ${accent}28`}} onClick={()=>speak(current.word,"word")}>
                 🔊 다시 듣기
               </TapButton>
@@ -584,6 +586,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
                 ✨ 문장 보기
               </TapButton>
             </div>
+            )}
           </div>
         )}
 
