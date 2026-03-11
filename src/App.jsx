@@ -111,14 +111,14 @@ function eul(word) {
 }
 
 const DONE_CHEERS=(name)=>[
-  `${name} 최고! 🌟`,`${name} 천재! 🧠`,`${name} 대박! 💥`,
+  `${name} 최고! 🌟`,`${name} 해냈어요! 🎊`,`${name} 훌륭해요! 🌻`,
   `완벽해, ${name}! ✨`,`우와, ${name}! 🎉`,`${name} 멋져! 👑`,
   `굉장해, ${name}! 🔥`,`${name} 멋있어! 😎`,
 ];
 const SENTENCE_CHEERS=[
   "잘 찾았어요! 🎉","딩동댕! 💯","역시 대단해요! 🔥",
   "눈이 정확해요! 👀","맞아요, 바로 그거예요! 🌟","완벽해요! ✨",
-  "빠르다 빠르! ⚡","탁월한 선택! 🏆",
+  "빨리 찾았어요! 🐇","바로 그거예요! ✅",
 ];
 function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
 
