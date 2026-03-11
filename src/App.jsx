@@ -103,6 +103,13 @@ const WORLDS=[
    ]},
 ];
 
+// 한국어 조사 을/를 자동 선택
+function eul(word) {
+  const code=word.charCodeAt(word.length-1);
+  if(code<0xAC00||code>0xD7A3)return "를";
+  return (code-0xAC00)%28===0?"를":"을";
+}
+
 // 정답 + 오답 3개 섞어서 반환
 function getChoices(correctLetter) {
   const alpha="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").filter(l=>l!==correctLetter);
@@ -429,7 +436,7 @@ function GamePlay({world,stage,onClear,onBack,name}){
         </div>
 
         {/* 힌트 태그 */}
-        <div style={{display:"inline-block",background:accent+"18",borderRadius:999,padding:"6px 18px",fontSize:"1rem",fontWeight:700,color:accent,marginBottom:20}}>
+        <div style={{display:"inline-block",background:accent+"18",borderRadius:999,padding:"8px 22px",fontSize:"1.3rem",fontWeight:700,color:accent,marginBottom:20}}>
           {current.hint}
         </div>
 
@@ -532,8 +539,8 @@ function GamePlay({world,stage,onClear,onBack,name}){
         {phase==="sentence"&&(
           <div style={{animation:"popIn 0.4s ease-out"}}>
             <div style={{background:`linear-gradient(135deg,${accent}15,${accent}08)`,borderRadius:24,padding:"22px 18px",marginBottom:16,border:`2.5px solid ${accent}33`}}>
-              <div style={{fontSize:"0.95rem",fontWeight:700,color:"#94A3B8",marginBottom:10}}>
-                {sentenceTapped?"잘 찾았어요! 🎉":"👆 문장에서 단어를 찾아 탭해봐요!"}
+              <div style={{fontSize:"1.25rem",fontWeight:900,color:accent,marginBottom:12}}>
+                {sentenceTapped?"잘 찾았어요! 🎉":`👆 문장에서 ${current.hint.split(" ").pop()}${eul(current.hint.split(" ").pop())} 찾아 탭해봐요!`}
               </div>
               <SentenceDisplay
                 sentence={current.sentence}
