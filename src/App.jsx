@@ -1,8 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 
+// 1. AudioContext 싱글턴 — 매 호출마다 새로 생성하지 않고 재사용
+let _audioCtx=null;
+function getAudioCtx(){
+  if(!_audioCtx||_audioCtx.state==="closed")
+    _audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  return _audioCtx;
+}
+
 function playDrum(type="tick") {
   try {
-    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const ctx=getAudioCtx();
     if(type==="tick"){
       const buf=ctx.createBuffer(1,ctx.sampleRate*0.08,ctx.sampleRate);
       const d=buf.getChannelData(0);
@@ -153,9 +161,12 @@ if("speechSynthesis" in window){
   window.speechSynthesis.onvoiceschanged=()=>window.speechSynthesis.getVoices();
 }
 
+// 2. RegExp 특수문자 이스케이프 — keyword가 향후 외부 입력이 되어도 안전하게
+function escapeRegExp(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");}
+
 // 문장에서 키워드를 탭 가능하게 표시
 function SentenceDisplay({sentence,keyword,accent,tappable,onTap}){
-  const parts=sentence.split(new RegExp(`(${keyword})`,"gi"));
+  const parts=sentence.split(new RegExp(`(${escapeRegExp(keyword)})`,"gi"));
   return(
     <div style={{fontSize:"1.7rem",fontWeight:900,lineHeight:1.9,color:"#333",letterSpacing:1}}>
       {parts.map((p,i)=>
@@ -697,20 +708,32 @@ export default function App(){
   const stage=(world&&selStage)?world.stages.find(s=>s.stage===selStage):null;
   const bg=world?.bg||"linear-gradient(160deg,#EDE9FE 0%,#DDD6FE 100%)";
 
-  // progress 변경 시 localStorage에 저장
+  // progress 변경 시 localStorage에 저장 (encodeURIComponent 키 통일)
   useEffect(()=>{
     if(!playerName)return;
-    try{localStorage.setItem(`kwg_${playerName}`,JSON.stringify(progress));}catch(e){}
+    try{localStorage.setItem(`kwg_${encodeURIComponent(playerName)}`,JSON.stringify(progress));}catch(e){}
   },[progress,playerName]);
+
+  // 3. localStorage 데이터 구조 검증 — 파싱 후 형식이 맞는지 확인
+  function isValidProgress(data){
+    if(typeof data!=="object"||data===null||Array.isArray(data))return false;
+    return Object.entries(data).every(([k,v])=>
+      /^\d+$/.test(k)&&typeof v==="object"&&v!==null&&!Array.isArray(v)&&
+      Object.entries(v).every(([sk,sv])=>/^\d+$/.test(sk)&&[0,1,2,3].includes(sv))
+    );
+  }
 
   function handleStart(name){
     setPlayerName(name);
-    // 이름 기준으로 저장된 진행상황 불러오기
+    // 4. encodeURIComponent — 이름에 특수문자가 있어도 키가 안전하게 생성됨
+    const key=`kwg_${encodeURIComponent(name)}`;
     try{
       localStorage.setItem("kwg_lastPlayer",name);
-      const saved=localStorage.getItem(`kwg_${name}`);
-      if(saved)setProgress(JSON.parse(saved));
-      else setProgress({});
+      const saved=localStorage.getItem(key);
+      if(saved){
+        const parsed=JSON.parse(saved);
+        setProgress(isValidProgress(parsed)?parsed:{});
+      } else setProgress({});
     }catch(e){setProgress({});}
     setScreen("world");
   }
