@@ -211,7 +211,9 @@ function TapButton({onClick,children,style={},bg,color="#fff",shadow}){
 
 // -- 이름 입력 --
 function NameEntry({onStart}){
-  const [name,setName]=useState("");
+  const [name,setName]=useState(()=>{
+    try{return localStorage.getItem("kwg_lastPlayer")||"";}catch(e){return "";}
+  });
   return(
     <div style={{textAlign:"center",maxWidth:400,width:"100%",padding:"0 8px"}}>
       <div style={{fontSize:"5rem",animation:"bounce 1.5s ease-in-out infinite",display:"inline-block",marginBottom:8}}>
@@ -695,6 +697,24 @@ export default function App(){
   const stage=(world&&selStage)?world.stages.find(s=>s.stage===selStage):null;
   const bg=world?.bg||"linear-gradient(160deg,#EDE9FE 0%,#DDD6FE 100%)";
 
+  // progress 변경 시 localStorage에 저장
+  useEffect(()=>{
+    if(!playerName)return;
+    try{localStorage.setItem(`kwg_${playerName}`,JSON.stringify(progress));}catch(e){}
+  },[progress,playerName]);
+
+  function handleStart(name){
+    setPlayerName(name);
+    // 이름 기준으로 저장된 진행상황 불러오기
+    try{
+      localStorage.setItem("kwg_lastPlayer",name);
+      const saved=localStorage.getItem(`kwg_${name}`);
+      if(saved)setProgress(JSON.parse(saved));
+      else setProgress({});
+    }catch(e){setProgress({});}
+    setScreen("world");
+  }
+
   function handleClear(stars){
     setProgress(p=>({...p,[selWorld]:{...(p[selWorld]||{}),[selStage]:Math.max(stars,p[selWorld]?.[selStage]??0)}}));
     setClearStars(stars);setScreen("clear");
@@ -721,7 +741,7 @@ export default function App(){
         @keyframes unlockPulse{0%,100%{box-shadow:0 0 0 4px rgba(0,0,0,0.08)}50%{box-shadow:0 0 0 6px rgba(0,0,0,0.18)}}
         .emoji-float{animation:emojiFloat 2.4s ease-in-out infinite;display:inline-block;}
       `}</style>
-      {screen==="name"  &&<NameEntry onStart={n=>{setPlayerName(n);setScreen("world");}}/>}
+      {screen==="name"  &&<NameEntry onStart={handleStart}/>}
       {screen==="world" &&<WorldSelect progress={progress} onSelect={id=>{setSelWorld(id);setNewlyUnlocked(null);setScreen("stage");}} name={playerName}/>}
       {screen==="stage" &&world&&<StageSelect world={world} progress={progress} onSelect={n=>{setSelStage(n);setNewlyUnlocked(null);setScreen("play");}} onBack={()=>setScreen("world")} newlyUnlocked={newlyUnlocked}/>}
       {screen==="play"  &&world&&stage&&<GamePlay world={world} stage={stage} onClear={handleClear} onBack={()=>setScreen("stage")} name={playerName}/>}
